@@ -1,6 +1,3 @@
-import $ from 'jquery'
-import noty from 'noty'
-
 let isActive = true
 let previousScrollPosition = -1
 
@@ -14,7 +11,7 @@ window.onblur = function () {
   isActive = false
 }
 
-const $STOP_SCROLLING_OVERLAY_TEMPLATE = $('<div id="ss-newsfeed-overlay"><div class="ss-dialog"></div></div>')
+const STOP_SCROLLING_OVERLAY_TEMPLATE = '<div id="ss-newsfeed-overlay"><div class="ss-dialog"></div></div>'
 const OVERLAY_DEFAULT_STYLE = {
   position: 'absolute',
   height: '100%',
@@ -118,20 +115,20 @@ chrome.storage.onChanged.addListener((items) => {
 
 main()
 
-let $newsfeedContainer
+let newsfeedContainer
 async function main () {
   async function onNewsfeedPageFound () {
     // If it is newsfeed from group, ignore it as we want to block homepage's newsfeed only
-    if (await isUserOnGroup()) {
+    if (isUserOnGroupOrEvent()) {
       console.log('User is on group, ignore the newsfeed. Do nothing.')
     } else {
-      await injectSSF()
-      await scrollToTop()
-      await insertSSFOverlay()
-      await showStopScrollingDialog()
+      injectSSF()
+      scrollToTop()
+      insertSSFOverlay()
+      showStopScrollingDialog()
     }
   }
-
+  console.log('Start watching for newsfeed page')
   // Quickly find the newsfeed container right after users open new Facebook tab
   await watchForNewsfeedPage(50, onNewsfeedPageFound, true)
   await watchForNewsfeedPage(1000, onNewsfeedPageFound)
@@ -142,10 +139,10 @@ async function watchForNewsfeedPage (interval, cb, findOnce = false) {
   while (true) {
     console.log('looking for newsfeed page')
 
-    if (!(await isNewsfeedPageElementFound())) {
-      $newsfeedContainer = await findNewsfeedContainer()
+    if (!(isNewsfeedPageElementFound())) {
+      newsfeedContainer = findNewsfeedContainer()
       // Check if newsfeed container is valid
-      if ($newsfeedContainer !== undefined && $newsfeedContainer !== null && $newsfeedContainer.attr('ssf-injected') !== 'true') {
+      if (newsfeedContainer !== undefined && newsfeedContainer !== null && newsfeedContainer.getAttribute('ssf-injected') !== 'true') {
         console.log('Newsfeed found')
 
         await cb()
@@ -164,60 +161,68 @@ async function watchForNewsfeedPage (interval, cb, findOnce = false) {
   }
 }
 
-async function findNewsfeedContainer () {
-  let $newsfeedContainer = await findNewsfeedV1()
-  if (!$newsfeedContainer) {
-    $newsfeedContainer = await findNewsfeedV2()
-  }
-  return $newsfeedContainer
+function findNewsfeedContainer () {
+  // let newsfeedContainer = findNewsfeedV1()
+  // if (!newsfeedContainer) {
+  //   newsfeedContainer = findNewsfeedV2()
+  // } else {
+  newsfeedContainer = findNewsfeedV3()
+  // }
+  return newsfeedContainer
 }
 
-async function findNewsfeedV1 () {
-  const $streamContainer = $('#stream_pagelet')
-  let $newsFeedElement = null
+// function findNewsfeedV1 () {
+//   const streamContainer = document.getElementById('stream_pagelet')
+//   let newsFeedElement = null
 
-  await $streamContainer
-    .children()
-    .each(function () {
-      if (NEWSFEED_STREAM_MATCHER.test(this.id)) {
-        $newsFeedElement = $(this)
-      }
-    })
-    .promise()
+//   streamContainer.children.forEach((child) => {
+//       if (NEWSFEED_STREAM_MATCHER.test(child.id)) {
+//         newsFeedElement = child
+//       }
+//     })
 
-  return $newsFeedElement
+//   return newsFeedElement
+// }
+
+// function findNewsfeedV2 () {
+//   const $element = $('[role=feed]')
+//   return $element.length > 0 ? $element : null
+// }
+
+function findNewsfeedV3 () {
+  const element = document.querySelector('[role=main]')
+  return element
 }
 
-async function findNewsfeedV2 () {
-  const $element = $('[role=feed]')
-  return $element.length > 0 ? $element : null
-}
-
-async function injectSSF () {
-  await $newsfeedContainer.attr('ssf-injected', 'true').promise()
+function injectSSF () {
+  newsfeedContainer.setAttribute('ssf-injected', 'true')
   console.log('SSF Injected')
 }
 
-async function isUserOnGroup () {
+function isUserOnGroupOrEvent () {
   const { pathname } = window.location
-  return pathname.startsWith('/groups/')
+  return pathname.startsWith('/groups/') || pathname.startsWith('/events/')
 }
 
-async function isNewsfeedPageOnScreen () {
-  if (await isUserOnGroup()) {
+function isNewsfeedPageOnScreen () {
+  if (isUserOnGroupOrEvent()) {
     return false
   }
-  const $container = await findNewsfeedContainer()
-  return ($container !== undefined && $container !== null && $container.attr('ssf-injected') === 'true' && $container.is(':visible'))
+  const container = findNewsfeedContainer()
+  return (container !== undefined && container !== null && container.getAttribute('ssf-injected') === 'true' && container.is(':visible'))
 }
 
-async function isNewsfeedPageElementFound () {
-  const $container = await findNewsfeedContainer()
-  return ($container !== undefined && $container !== null && $container.attr('ssf-injected') === 'true')
+function isNewsfeedPageElementFound () {
+  const container = findNewsfeedContainer()
+  return (container !== undefined && container !== null && container.getAttribute('ssf-injected') === 'true')
 }
 
-async function insertSSFOverlay () {
-  await $newsfeedContainer.prepend($STOP_SCROLLING_OVERLAY_TEMPLATE.css(calculateOverlayCss())).promise()
+function insertSSFOverlay () {
+  let overlay = document.createElement('div')
+  overlay.id = 'ss-newsfeed-overlay'
+  overlay.innerHTML = "<div class='ss-dialog'></div>"
+  overlay.style = Object.assign(overlay.style, calculateOverlayCss())
+  newsfeedContainer.innerHTML = overlay.innerHTML
 
   // Prevent the SSF Overlay from being deleted by Facebook hydrate process
   let mutationsObserved = 0
@@ -227,8 +232,8 @@ async function insertSSFOverlay () {
     mutations.forEach((mutation) => {
       const { removedNodes } = mutation // DOM NodeList
       for (const node of removedNodes) {
-        if ($(node).is('#ss-newsfeed-overlay')) {
-          $newsfeedContainer.prepend($STOP_SCROLLING_OVERLAY_TEMPLATE.css(calculateOverlayCss()))
+        if (node.id === 'ss-newsfeed-overlay') {
+          newsfeedContainer.prepend(overlay)
           break
         }
       }
@@ -241,7 +246,7 @@ async function insertSSFOverlay () {
     }
   }))
 
-  observer.observe($newsfeedContainer[0], {
+  observer.observe(newsfeedContainer, {
     attributes: true,
     childList: true,
     characterData: true
@@ -279,23 +284,23 @@ function countAndUpdateScrollingTime () {
 }
 
 function scrollToTop () {
-  $('html, body').animate({ scrollTop: 0 }, 'medium')
+  document.querySelector('html, body').animate({ scrollTop: 0 }, { duration: 100})
 }
 
 function calculateOverlayCss () {
-  return $.extend(OVERLAY_DEFAULT_STYLE, { width: $newsfeedContainer.width() })
+  return { width: newsfeedContainer.offsetWidth, ...OVERLAY_DEFAULT_STYLE }
 }
 
 function updateTimerText () {
-  $newsfeedContainer.find('#ss-newsfeed-overlay span#scroll-time-count').text(Math.round(settings.timeCountToday / 60))
+  newsfeedContainer.querySelector('#ss-newsfeed-overlay span#scroll-time-count').innerText = Math.round(settings.timeCountToday / 60)
 }
 
 function showStopScrollingDialog () {
-  const $stopScrollingOverlay = $newsfeedContainer.find('#ss-newsfeed-overlay')
-  const $stopScrollingDialog = $stopScrollingOverlay.find('.ss-dialog')
+  const stopScrollingOverlay = document.getElementById('ss-newsfeed-overlay')
+  const stopScrollingDialog = stopScrollingOverlay.querySelector('.ss-dialog')
 
-  $stopScrollingDialog.html(SS_DIALOG_CONTENT)
-  $stopScrollingDialog.find('.ss-open-nf-custom').click(() => {
+  stopScrollingDialog.innerHTML = SS_DIALOG_CONTENT
+  stopScrollingDialog.querySelector('.ss-open-nf-custom').click(() => {
     const minutes = Number(window.prompt('How many minutes do you want?', settings.customTime || ''))
     if (minutes <= 0) {
       window.alert('Invalid. Must be greater than 0 minutes.')
@@ -307,9 +312,9 @@ function showStopScrollingDialog () {
       })
     }
   })
-  $stopScrollingDialog.find('.ss-open-nf').each(function () {
-    $(this).click(function () {
-      const secToOpen = parseInt($(this).data('amount'), 10)
+  stopScrollingDialog.querySelector('.ss-open-nf').each(function () {
+    this.addEventListener('click', () => {
+      const secToOpen = parseInt(this.dataset.amount)
       openNewsFeed(secToOpen)
     })
   })
@@ -317,29 +322,29 @@ function showStopScrollingDialog () {
   updateTimerText()
 
   // Wait for video section
-  const $inputWaitForVideo = $stopScrollingDialog.find('input#wait-for-video')
-  $inputWaitForVideo.prop('checked', settings.waitForVideo)
-  $inputWaitForVideo.change(() => {
-    settings.waitForVideo = $inputWaitForVideo.is(':checked')
+  const inputWaitForVideo = stopScrollingDialog.getElementById('wait-for-video')
+  inputWaitForVideo.setAttribute('checked', settings.waitForVideo)
+  inputWaitForVideo.addEventListener('change', () => {
+    settings.waitForVideo = inputWaitForVideo.checked
     chrome.storage.sync.set({
-      waitForVideo: $inputWaitForVideo.is(':checked')
+      waitForVideo: inputWaitForVideo.checked
     })
   })
 
   // Return to previous position
-  const $inputReturnToPreviousPosition = $stopScrollingDialog.find('input#return-to-previous-position')
-  $inputReturnToPreviousPosition.prop('checked', settings.returnToPreviousPosition)
-  $inputReturnToPreviousPosition.change(() => {
-    settings.returnToPreviousPosition = $inputReturnToPreviousPosition.is(':checked')
+  const inputReturnToPreviousPosition = stopScrollingDialog.getElementById('return-to-previous-position')
+  inputReturnToPreviousPosition.setAttribute('checked', settings.returnToPreviousPosition)
+  inputReturnToPreviousPosition.addEventListener('change', () => {
+    settings.returnToPreviousPosition = inputReturnToPreviousPosition.checked
     chrome.storage.sync.set({
-      returnToPreviousPosition: $inputReturnToPreviousPosition.is(':checked')
+      returnToPreviousPosition: inputReturnToPreviousPosition.checked
     })
   })
 
   // Longer time option (aka Use with caution)
-  const $inputShowLongerTimeOptions = $stopScrollingDialog.find('input#enable-use-with-caution')
-  $inputShowLongerTimeOptions.prop('checked', settings.enableUseWithCation)
-  $inputShowLongerTimeOptions.change(() => {
+  const inputShowLongerTimeOptions = stopScrollingDialog.getElementById('enable-use-with-caution')
+  inputShowLongerTimeOptions.setAttribute('checked', settings.enableUseWithCation)
+  inputShowLongerTimeOptions.addEventListener('change', () => {
     if (settings.enableUseWithCation) {
       alert('You made a right choice, and also a brave choice ;) But it will be definitely worth it!')
       chrome.storage.sync.set({
@@ -352,20 +357,20 @@ function showStopScrollingDialog () {
           enableUseWithCation: true
         }, () => window.location.reload())
       } else {
-        $inputShowLongerTimeOptions.prop('checked', settings.enableUseWithCation)
+        inputShowLongerTimeOptions.setAttribute('checked', settings.enableUseWithCation)
       }
     }
   })
-  if (settings.enableUseWithCation) $stopScrollingDialog.find('#use-with-caution').show()
+  if (settings.enableUseWithCation) stopScrollingDialog.getElementById('use-with-caution').show()
 }
 
 function openNewsFeed (secToOpen) {
   startTimer()
-  $STOP_SCROLLING_OVERLAY_TEMPLATE.hide()
+  document.getElementById('ss-newsfeed-overlay').style.display = 'none'
 
   // Scroll to previous position
   if (settings.returnToPreviousPosition) {
-    $('html, body').animate({ scrollTop: previousScrollPosition })
+    document.querySelector('html, body').animate({ scrollTop: previousScrollPosition }, { duration: 100})
   }
 
   console.log(`Open for ${secToOpen} secs`)
@@ -379,14 +384,13 @@ function openNewsFeed (secToOpen) {
 
 async function reCloseNewsfeed () {
   // Check if user still on News Feed page, otherwise do nothing
-  if (await isNewsfeedPageElementFound()) {
-    const closeNewsFeed = async function () {
-      $STOP_SCROLLING_OVERLAY_TEMPLATE.show()
-      $newsfeedContainer.find('#ss-newsfeed-overlay').show()
+  if (isNewsfeedPageElementFound()) {
+    const closeNewsFeed = function () {
+      document.getElementById('ss-newsfeed-overlay').style.display = 'block'
       updateTimerText()
       stopTimer()
 
-      if (await isNewsfeedPageOnScreen()) {
+      if (isNewsfeedPageOnScreen()) {
         storeCurrentScrollPosition()
         scrollToTop()
       }
@@ -410,7 +414,7 @@ async function reCloseNewsfeed () {
 
 function getPlayingVideoElem () {
   let playingVideoElem
-  $('video').each(function () {
+  document.querySelectorAll('video').each(function () {
     if (!this.paused) playingVideoElem = this
   })
   return playingVideoElem

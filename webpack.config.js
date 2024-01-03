@@ -1,8 +1,8 @@
 const TerserPlugin = require('terser-webpack-plugin')
 
 module.exports = (env) => {
-    const plugins = (env && env.production) ? ["transform-remove-console"] : []
-    
+    const plugins = env.production ? ["transform-remove-console"] : []
+
     return {
         entry: "./src/entry.js",
         output: {
@@ -15,20 +15,20 @@ module.exports = (env) => {
                     test: /\.js$/,
                     exclude: /node_modules/,
                     loader: "babel-loader",
-                    options: { plugins }
+                    // options: { plugins }
                 }
             ]
         },
-        optimization: {
-            minimize: true,
-            minimizer: [new TerserPlugin({
-                terserOptions: {
-                    output: {
-                      comments: false,
-                    },
-                  },
-                extractComments: false
-            })]
-        }
+        // optimization: {
+        //     minimize: true,
+        //     minimizer: [new TerserPlugin({
+        //         terserOptions: {
+        //             output: {
+        //               comments: false,
+        //             },
+        //           },
+        //         extractComments: false
+        //     })]
+        // }
     }
 }
